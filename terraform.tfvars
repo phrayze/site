@@ -1,0 +1,5 @@
+org_id                    = "105577908261"
+billing_account           = "015446-C8112E-1D6075"
+folder_id                 = "998388568617"
+terraform_service_account = "org-terraform@cft-seed-cc18.iam.gserviceaccount.com"
+region                    = "europe-west1"

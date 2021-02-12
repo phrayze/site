@@ -1,0 +1,589 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  annotations:
+    gke.io/cluster: gke://bu1-p-app1-862a/europe-west1/bu1-app1-cluster1
+  labels:
+    control-plane: controller-manager
+  name: asm-system
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.2.5
+    gke.io/cluster: gke://bu1-p-app1-862a/europe-west1/bu1-app1-cluster1
+  creationTimestamp: null
+  name: canonicalservices.anthos.cloud.google.com
+spec:
+  group: anthos.cloud.google.com
+  names:
+    kind: CanonicalService
+    listKind: CanonicalServiceList
+    plural: canonicalservices
+    singular: canonicalservice
+  scope: Namespaced
+  validation:
+    openAPIV3Schema:
+      description: CanonicalService is the Schema for the canonicalservices API
+      properties:
+        apiVersion:
+          description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+          type: string
+        kind:
+          description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+          type: string
+        metadata:
+          type: object
+        spec:
+          description: CanonicalServiceSpec defines the desired state of CanonicalService
+          properties:
+            description:
+              description: Description of the service
+              maxLength: 500
+              minLength: 0
+              type: string
+            displayName:
+              description: Human-friendly name of the service
+              maxLength: 100
+              minLength: 0
+              type: string
+          type: object
+        status:
+          description: CanonicalServiceStatus defines the observed state of CanonicalService
+          properties:
+            inactiveSince:
+              description: The time that the service was set to Inactive (if the service is Active, will be empty)
+              format: date-time
+              type: string
+            resourceTypes:
+              description: Array of the resource types the service is currently found on
+              items:
+                description: Struct representing the types of resource a Canonical Service has been run on. It includes information about whether the resource is currently in use by the service, so that we can track resources that might still have valuable metrics but are not active.
+                properties:
+                  inactiveSince:
+                    format: date-time
+                    type: string
+                  name:
+                    enum:
+                    - Pod
+                    - WorkloadEntry
+                    type: string
+                  state:
+                    description: CanonicalServiceState tells us whether the service is currently Active (aka there is at least one Pod or WorkloadEntry running this service) or Inactive.
+                    enum:
+                    - Active
+                    - Inactive
+                    - Error
+                    type: string
+                required:
+                - name
+                - state
+                type: object
+              type: array
+            resourceVersionWhenBecameInactive:
+              description: The resource version of the Canonical Service resource when it was marked Inactive
+              type: string
+            state:
+              description: Current state of the service
+              enum:
+              - Active
+              - Inactive
+              - Error
+              type: string
+          required:
+          - state
+          type: object
+      type: object
+  version: v1beta1
+  versions:
+  - name: v1beta1
+    served: true
+    storage: true
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  annotations:
+    gke.io/cluster: gke://bu1-p-app1-862a/europe-west1/bu1-app1-cluster1
+  name: canonical-service-account
+  namespace: asm-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  annotations:
+    gke.io/cluster: gke://bu1-p-app1-862a/europe-west1/bu1-app1-cluster1
+  name: canonical-service-leader-election-role
+  namespace: asm-system
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - configmaps/status
+  verbs:
+  - get
+  - update
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  annotations:
+    gke.io/cluster: gke://bu1-p-app1-862a/europe-west1/bu1-app1-cluster1
+  creationTimestamp: null
+  name: canonical-service-manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - anthos.cloud.google.com
+  resources:
+  - canonicalservices
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - anthos.cloud.google.com
+  resources:
+  - canonicalservices/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - networking.istio.io
+  resources:
+  - workloadentries
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  annotations:
+    gke.io/cluster: gke://bu1-p-app1-862a/europe-west1/bu1-app1-cluster1
+  name: canonical-service-metrics-reader
+rules:
+- nonResourceURLs:
+  - /metrics
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  annotations:
+    gke.io/cluster: gke://bu1-p-app1-862a/europe-west1/bu1-app1-cluster1
+  name: canonical-service-leader-election-rolebinding
+  namespace: asm-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: canonical-service-leader-election-role
+subjects:
+- kind: ServiceAccount
+  name: canonical-service-account
+  namespace: asm-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  annotations:
+    gke.io/cluster: gke://bu1-p-app1-862a/europe-west1/bu1-app1-cluster1
+  name: canonical-service-manager-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: canonical-service-manager-role
+subjects:
+- kind: ServiceAccount
+  name: canonical-service-account
+  namespace: asm-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  annotations:
+    gke.io/cluster: gke://bu1-p-app1-862a/europe-west1/bu1-app1-cluster1
+  name: canonical-service-proxy-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: canonical-service-proxy-role
+subjects:
+- kind: ServiceAccount
+  name: canonical-service-account
+  namespace: asm-system
+---
+apiVersion: serviceusage.cnrm.cloud.google.com/v1beta1
+kind: Service
+metadata:
+  annotations:
+    cnrm.cloud.google.com/deletion-policy: abandon
+    cnrm.cloud.google.com/disable-dependent-services: "false"
+    gke.io/cluster: bootstrap://
+  name: anthos.googleapis.com
+  namespace: bu1-p-app1-862a
+---
+apiVersion: serviceusage.cnrm.cloud.google.com/v1beta1
+kind: Service
+metadata:
+  annotations:
+    cnrm.cloud.google.com/deletion-policy: abandon
+    cnrm.cloud.google.com/disable-dependent-services: "false"
+    gke.io/cluster: bootstrap://
+  name: compute.googleapis.com
+  namespace: bu1-p-app1-862a
+---
+apiVersion: serviceusage.cnrm.cloud.google.com/v1beta1
+kind: Service
+metadata:
+  annotations:
+    cnrm.cloud.google.com/deletion-policy: abandon
+    cnrm.cloud.google.com/disable-dependent-services: "false"
+    gke.io/cluster: bootstrap://
+  name: container.googleapis.com
+  namespace: bu1-p-app1-862a
+---
+apiVersion: serviceusage.cnrm.cloud.google.com/v1beta1
+kind: Service
+metadata:
+  annotations:
+    cnrm.cloud.google.com/deletion-policy: abandon
+    cnrm.cloud.google.com/disable-dependent-services: "false"
+    gke.io/cluster: bootstrap://
+  name: iamcredentials.googleapis.com
+  namespace: bu1-p-app1-862a
+---
+apiVersion: serviceusage.cnrm.cloud.google.com/v1beta1
+kind: Service
+metadata:
+  annotations:
+    cnrm.cloud.google.com/deletion-policy: abandon
+    cnrm.cloud.google.com/disable-dependent-services: "false"
+    gke.io/cluster: bootstrap://
+  name: meshca.googleapis.com
+  namespace: bu1-p-app1-862a
+---
+apiVersion: serviceusage.cnrm.cloud.google.com/v1beta1
+kind: Service
+metadata:
+  annotations:
+    cnrm.cloud.google.com/deletion-policy: abandon
+    cnrm.cloud.google.com/disable-dependent-services: "false"
+    gke.io/cluster: bootstrap://
+  name: meshconfig.googleapis.com
+  namespace: bu1-p-app1-862a
+---
+apiVersion: serviceusage.cnrm.cloud.google.com/v1beta1
+kind: Service
+metadata:
+  annotations:
+    cnrm.cloud.google.com/deletion-policy: abandon
+    cnrm.cloud.google.com/disable-dependent-services: "false"
+    gke.io/cluster: bootstrap://
+  name: meshtelemetry.googleapis.com
+  namespace: bu1-p-app1-862a
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    gke.io/cluster: gke://bu1-p-app1-862a/europe-west1/bu1-app1-cluster1
+  labels:
+    control-plane: controller-manager
+  name: canonical-service-controller-manager-metrics-service
+  namespace: asm-system
+spec:
+  ports:
+  - name: https
+    port: 8443
+    targetPort: https
+  selector:
+    control-plane: controller-manager
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    gke.io/cluster: gke://bu1-p-app1-862a/europe-west1/bu1-app1-cluster1
+  labels:
+    control-plane: controller-manager
+  name: canonical-service-controller-manager
+  namespace: asm-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+  template:
+    metadata:
+      labels:
+        control-plane: controller-manager
+    spec:
+      containers:
+      - args:
+        - --secure-listen-address=0.0.0.0:8443
+        - --upstream=http://127.0.0.1:8080/
+        - --logtostderr=true
+        - --v=10
+        image: gcr.io/kubebuilder/kube-rbac-proxy:v0.5.0
+        name: kube-rbac-proxy
+        ports:
+        - containerPort: 8443
+          name: https
+      - args:
+        - --metrics-addr=127.0.0.1:8080
+        - --enable-leader-election
+        command:
+        - /manager
+        image: gcr.io/gke-release/asm/canonical-service-controller:1.6.11-asm.1
+        name: manager
+        resources:
+          limits:
+            cpu: 100m
+            memory: 100Mi
+          requests:
+            cpu: 100m
+            memory: 20Mi
+      serviceAccountName: canonical-service-account
+      terminationGracePeriodSeconds: 10
+---
+apiVersion: container.cnrm.cloud.google.com/v1beta1
+kind: ContainerCluster
+metadata:
+  annotations:
+    cnrm.cloud.google.com/project-id: bu1-p-app1-862a
+    gke.io/cluster: bootstrap://
+  name: bu1-app1-cluster1
+  namespace: bu1-p-app1-862a
+spec:
+  addonsConfig:
+    gcePersistentDiskCsiDriverConfig:
+      enabled: true
+    horizontalPodAutoscaling:
+      disabled: false
+    httpLoadBalancing:
+      disabled: false
+    networkPolicyConfig:
+      disabled: false
+  clusterAutoscaling:
+    autoscalingProfile: BALANCED
+    enabled: false
+  clusterIpv4Cidr: 10.1.0.0/24
+  databaseEncryption:
+    state: DECRYPTED
+  defaultMaxPodsPerNode: 110
+  enableShieldedNodes: true
+  ipAllocationPolicy:
+    clusterIpv4CidrBlock: 10.1.0.0/24
+    clusterSecondaryRangeName: bu1-app1-cluster1-pods
+    servicesIpv4CidrBlock: 10.2.0.0/19
+    servicesSecondaryRangeName: bu1-app1-cluster1-svc
+  labels:
+    mesh_id: proj-284621635228
+  location: europe-west1
+  loggingService: logging.googleapis.com/kubernetes
+  maintenancePolicy:
+    dailyMaintenanceWindow:
+      duration: PT4H0M0S
+      startTime: "05:00"
+  masterAuth:
+    clientCertificateConfig:
+      issueClientCertificate: false
+    clusterCaCertificate: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURLekNDQWhPZ0F3SUJBZ0lSQU9ZUFRxaTB4VUNsT25KcCtYRVFGWEV3RFFZSktvWklodmNOQVFFTEJRQXcKTHpFdE1Dc0dBMVVFQXhNa05ETTJOamM1WXpRdE9XVXhOaTAwWlRoaUxUazJNR1l0TnpJMFkyTmtOVFJtWkdVdwpNQjRYRFRJeE1ERXlOVEE1TXpjd04xb1hEVEkyTURFeU5ERXdNemN3TjFvd0x6RXRNQ3NHQTFVRUF4TWtORE0yCk5qYzVZelF0T1dVeE5pMDBaVGhpTFRrMk1HWXROekkwWTJOa05UUm1aR1V3TUlJQklqQU5CZ2txaGtpRzl3MEIKQVFFRkFBT0NBUThBTUlJQkNnS0NBUUVBMGwzeXBlcngvaG9mTmJ1WndEWU9OL0JpdThwUk95NXMyUHhNYWt3RgpUM3FzV1VQcWxSZnlKUC9JWCs2U21sbEFhR0lxMkhqWndEdFJBMjRRZUhoMWdGVE9aaTVGV3g0VGowVTZEa1MxCmlSWmRQNktHbitTZ2tDcERnTEV6MGtyVVZ5Q3BUREFIRGNNOTdqTUdKM2krWnJMNjUrc1dPWjZRcUxyYXZjcjAKa2ZkZXA5SDVST1VXemFMTnAyY0VtV3dSdysxTURLOHVVTjF0TzBnM2ZseUdCN1BGMGVkSUVGSnNNSW4xM2kxcwpwem9ZTi9ha3Y3eTBuNG44eis4RHE5cXNETGdLcHhVN0xmdHdlTXd4UkVJaCtsbC9VeTJxd1NEb0x5aWhWeENGCi8rSWtUNnpJaXJwT1JwS3I4THBJdHordm55UnBtTVAwR1Y4S3VLRWY1dGpxaHdJREFRQUJvMEl3UURBT0JnTlYKSFE4QkFmOEVCQU1DQWdRd0R3WURWUjBUQVFIL0JBVXdBd0VCL3pBZEJnTlZIUTRFRmdRVWxPU0R0N203cUVRcwpPV0RCZEl3N0I2ZklORkV3RFFZSktvWklodmNOQVFFTEJRQURnZ0VCQUcwenJGRlJBRE1wUUdHZS80dndkV2M3CmhMRGlLdk5EQk52QTYrZ0x2ZTdCZXNnODdPVS9Fa1Z4eW1PWERKMkxTcjBPVldMcEFaNUFiQ0w4TG1XdlcwVEcKRFNlb3kzb3doc2N3RVk0UG5oQTFKcHEvK0JvbGJYODcvTWhIckJPZnRSSmVHZk83TDNLNXN2ekhuOWNUM1l1RQpDbEg3WHc3cEZsL0JMYmxYU2tCNlAvKzdjZVZWMEI0eURsTG11b0daK1psbVlxNFpsQnUxanhIWFZ5NWlLRk9LCnI1dCs1TzZMWlgrVlBYelkyY3pGUnVUVHJGeE13a0tKZW1UcEZEY0hIUHBadHZHcjAzWXBydUkvSEN5YlhZMWwKZnFrR2sySWJ6bXZxVXBrMno2cHBoUlpXblkxeVRKUW9lenBNcDlrTDM4SU9tb1dBZ3ZocVQxL05qYmx5RkM4PQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+  masterAuthorizedNetworksConfig:
+    cidrBlocks:
+    - cidrBlock: 0.0.0.0/0
+      displayName: VPC
+  monitoringService: monitoring.googleapis.com/kubernetes
+  networkPolicy:
+    enabled: true
+    provider: CALICO
+  networkRef:
+    external: projects/bu1-p-app1-862a/global/networks/bu1-app1-vpc
+  nodeConfig:
+    diskSizeGb: 100
+    diskType: pd-standard
+    imageType: COS
+    labels:
+      cluster_name: bu1-app1-cluster1
+      node_pool: bu1-app1-cluster1-np-01
+    machineType: e2-standard-4
+    metadata:
+      cluster_name: bu1-app1-cluster1
+      disable-legacy-endpoints: "true"
+      node_pool: bu1-app1-cluster1-np-01
+    oauthScopes:
+    - https://www.googleapis.com/auth/cloud-platform
+    serviceAccountRef:
+      external: bu1-app1-cluster1-gke-66d2b6c5@bu1-p-app1-862a.iam.gserviceaccount.com
+    shieldedInstanceConfig:
+      enableIntegrityMonitoring: true
+    tags:
+    - gke-bu1-app1-cluster1
+    - gke-bu1-app1-cluster1-bu1-app1-cluster1-np-01
+    workloadMetadataConfig:
+      nodeMetadata: GKE_METADATA_SERVER
+  nodeLocations:
+  - europe-west1-c
+  - europe-west1-d
+  - europe-west1-b
+  nodeVersion: 1.18.14-gke.1200
+  privateClusterConfig:
+    enablePrivateEndpoint: false
+    enablePrivateNodes: true
+    masterIpv4CidrBlock: 192.168.0.0/28
+    peeringName: gke-nf23879cdad80c8d5356-7b21-b9ca-peer
+    privateEndpoint: 192.168.0.2
+    publicEndpoint: 34.78.129.206
+  releaseChannel:
+    channel: UNSPECIFIED
+  subnetworkRef:
+    external: projects/bu1-p-app1-862a/regions/europe-west1/subnetworks/bu1-app1-euw1
+  verticalPodAutoscaling:
+    enabled: false
+  workloadIdentityConfig:
+    identityNamespace: bu1-p-app1-862a.svc.id.goog
+status:
+  endpoint: 34.78.129.206
+  instanceGroupUrls:
+  - https://www.googleapis.com/compute/beta/projects/bu1-p-app1-862a/zones/europe-west1-b/instanceGroups/gke-bu1-app1-cluster-bu1-app1-cluster-54dff451-grp
+  - https://www.googleapis.com/compute/beta/projects/bu1-p-app1-862a/zones/europe-west1-c/instanceGroups/gke-bu1-app1-cluster-bu1-app1-cluster-969df78d-grp
+  - https://www.googleapis.com/compute/beta/projects/bu1-p-app1-862a/zones/europe-west1-d/instanceGroups/gke-bu1-app1-cluster-bu1-app1-cluster-977dd8f7-grp
+  labelFingerprint: a9dc16a7
+  masterVersion: 1.18.14-gke.1200
+  servicesIpv4Cidr: 10.2.0.0/19
+---
+apiVersion: container.cnrm.cloud.google.com/v1beta1
+kind: ContainerNodePool
+metadata:
+  annotations:
+    cnrm.cloud.google.com/project-id: bu1-p-app1-862a
+    gke.io/cluster: bootstrap://
+  name: bu1-app1-cluster1-np-01
+  namespace: bu1-p-app1-862a
+spec:
+  autoscaling:
+    maxNodeCount: 100
+    minNodeCount: 1
+  clusterRef:
+    external: bu1-app1-cluster1
+    name: bu1-app1-cluster1
+  initialNodeCount: 1
+  location: europe-west1
+  management:
+    autoRepair: true
+    autoUpgrade: true
+  maxPodsPerNode: 12
+  nodeConfig:
+    diskSizeGb: 100
+    diskType: pd-standard
+    imageType: COS
+    labels:
+      cluster_name: bu1-app1-cluster1
+      node_pool: bu1-app1-cluster1-np-01
+    machineType: e2-standard-4
+    metadata:
+      cluster_name: bu1-app1-cluster1
+      disable-legacy-endpoints: "true"
+      node_pool: bu1-app1-cluster1-np-01
+    oauthScopes:
+    - https://www.googleapis.com/auth/cloud-platform
+    serviceAccountRef:
+      external: bu1-app1-cluster1-gke-66d2b6c5@bu1-p-app1-862a.iam.gserviceaccount.com
+    shieldedInstanceConfig:
+      enableIntegrityMonitoring: true
+    tags:
+    - gke-bu1-app1-cluster1
+    - gke-bu1-app1-cluster1-bu1-app1-cluster1-np-01
+    workloadMetadataConfig:
+      nodeMetadata: GKE_METADATA_SERVER
+  nodeCount: 1
+  nodeLocations:
+  - europe-west1-b
+  - europe-west1-c
+  - europe-west1-d
+  upgradeSettings:
+    maxSurge: 1
+    maxUnavailable: 0
+  version: 1.18.14-gke.1200
+status:
+  instanceGroupUrls:
+  - https://www.googleapis.com/compute/v1/projects/bu1-p-app1-862a/zones/europe-west1-b/instanceGroupManagers/gke-bu1-app1-cluster-bu1-app1-cluster-54dff451-grp
+  - https://www.googleapis.com/compute/v1/projects/bu1-p-app1-862a/zones/europe-west1-c/instanceGroupManagers/gke-bu1-app1-cluster-bu1-app1-cluster-969df78d-grp
+  - https://www.googleapis.com/compute/v1/projects/bu1-p-app1-862a/zones/europe-west1-d/instanceGroupManagers/gke-bu1-app1-cluster-bu1-app1-cluster-977dd8f7-grp
+---
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  annotations:
+    gke.io/cluster: gke://bu1-p-app1-862a/europe-west1/bu1-app1-cluster1
+  name: default-istio-operator
+spec:
+  components:
+    pilot:
+      k8s:
+        env:
+        - name: SPIFFE_BUNDLE_ENDPOINTS
+          value: bu1-p-app1-862a.svc.id.goog|https://storage.googleapis.com/mesh-ca-resources/spiffe_bundle.json
+        - name: ENABLE_STACKDRIVER_MONITORING
+          value: "true"
+  hub: gcr.io/gke-release/asm
+  meshConfig:
+    defaultConfig:
+      proxyMetadata:
+        GCP_METADATA: bu1-p-app1-862a|284621635228|bu1-app1-cluster1|europe-west1
+        GKE_CLUSTER_URL: https://container.googleapis.com/v1/projects/bu1-p-app1-862a/locations/europe-west1/clusters/bu1-app1-cluster1
+        TRUST_DOMAIN: bu1-p-app1-862a.svc.id.goog
+    trustDomainAliases:
+    - bu1-p-app1-862a.svc.id.goog
+  profile: asm-gcp
+  tag: 1.6.11-asm.1
+  values:
+    global:
+      meshID: proj-284621635228
+      multiCluster:
+        clusterName: bu1-p-app1-862a/europe-west1/bu1-app1-cluster1
+      sds:
+        token:
+          aud: bu1-p-app1-862a.svc.id.goog
+      trustDomain: bu1-p-app1-862a.svc.id.goog
